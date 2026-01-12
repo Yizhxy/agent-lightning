@@ -19,7 +19,7 @@ from tensordict import TensorDict
 from verl import DataProto
 
 from agentlightning import LLM, AgentLightningServer, NamedResources, RolloutLegacy
-from agentlightning.adapter.triplet import TracerTraceToTriplet, TraceToTripletBase
+from agentlightning.adapter.triplet import TracerTraceToTriplet, TraceToTripletBase,LlmProxyTraceToAugmentedTriplet
 from agentlightning.llm_proxy import LLMProxy, ModelConfig
 from agentlightning.store.base import LightningStore
 from agentlightning.types import EnqueueRolloutRequest, Rollout, RolloutConfig, Task
@@ -121,6 +121,65 @@ def _to_native(obj: Any) -> Any:
     return obj
 
 
+from typing import Any, Dict, Optional, Union
+
+from litellm.integrations.custom_logger import CustomLogger
+
+from agentlightning.llm_proxy import _get_pre_call_data  # type: ignore
+
+
+class AddLogprobs(CustomLogger):
+    """LiteLLM logger hook to request logprobs from vLLM.
+
+    This mutates the outgoing request payload to include `logprobs=1`
+    for backends that support logprobs return (e.g., vLLM).
+    """
+
+    async def async_pre_call_hook(self, *args: Any, **kwargs: Any) -> Optional[Union[Exception, str, Dict[str, Any]]]:
+        """Async pre-call hook to adjust request payload.
+
+        Args:
+            args: Positional args from LiteLLM.
+            kwargs: Keyword args from LiteLLM.
+
+        Returns:
+            Either an updated payload dict or an Exception to short-circuit.
+        """
+        try:
+            data = _get_pre_call_data(args, kwargs)
+        except Exception as e:
+            return e
+
+        # Ensure logprobs are requested from the backend when supported.
+        return {**data, "logprobs": 1}
+
+
+class AddTemperature(CustomLogger):
+    """LiteLLM logger hook to request logprobs from vLLM.
+
+    This mutates the outgoing request payload to include `logprobs=1`
+    for backends that support logprobs return (e.g., vLLM).
+    """
+
+    async def async_pre_call_hook(self, *args: Any, **kwargs: Any) -> Optional[Union[Exception, str, Dict[str, Any]]]:
+        """Async pre-call hook to adjust request payload.
+
+        Args:
+            args: Positional args from LiteLLM.
+            kwargs: Keyword args from LiteLLM.
+
+        Returns:
+            Either an updated payload dict or an Exception to short-circuit.
+        """
+        try:
+            data = _get_pre_call_data(args, kwargs)
+        except Exception as e:
+            return e
+
+        # Ensure logprobs are requested from the backend when supported.
+        return {**data, "temperature": 1.0}
+
+
 class AgentModeDaemon:
     """
     AgentModeDaemon using the AgentLightningServer SDK.
@@ -159,20 +218,26 @@ class AgentModeDaemon:
         else:
             assert store is not None
             self.store = store
-            if llm_proxy is None:
-                self.llm_proxy = LLMProxy(
-                    port=_find_available_port(),
-                    model_list=[],
-                    store=store,
-                )
-            else:
-                # Reuse the existing LLM proxy (probably configured by user)
-                self.llm_proxy = llm_proxy
-            if adapter is None:
-                self.adapter = TracerTraceToTriplet()
-            else:
-                # Reuse the one from trainer
-                self.adapter = adapter
+            # if llm_proxy is None:
+            #     self.llm_proxy = LLMProxy(
+            #         port=_find_available_port(),
+            #         model_list=[],
+            #         store=store,
+            #     )
+            # else:
+            #     # Reuse the existing LLM proxy (probably configured by user)
+            #     self.llm_proxy = llm_proxy
+            self.llm_proxy = LLMProxy(
+                port=8765, store=store, callbacks=["return_token_ids", "opentelemetry", AddLogprobs, AddTemperature]
+            )
+            self.llm_proxy.server_launcher._access_host = "localhost"
+
+            # if adapter is None:
+            #     self.adapter = TracerTraceToTriplet()
+            # else:
+            #     # Reuse the one from trainer
+            #     self.adapter = adapter
+            self.adapter = LlmProxyTraceToAugmentedTriplet()
             self._internal_loop: Optional[asyncio.AbstractEventLoop] = None
             self._internal_loop_thread = threading.Thread(target=self._internal_loop_runner, daemon=True)
             self._internal_loop_thread.start()
@@ -300,15 +365,23 @@ class AgentModeDaemon:
             [
                 ModelConfig(
                     {
-                        "model_name": model_name,
+                        "model_name": "claude-sonnet-4-5-20250929",
                         "litellm_params": {
                             "model": "hosted_vllm/" + model_name,
-                            "api_base": f"http://{address}/v1/",
+                            "api_base": f"http://{self.backend_llm_server_addresses[0]}/v1/",
                         },
                     }
-                )
-                for address in self.backend_llm_server_addresses
-            ],
+                ),
+                ModelConfig(
+                    {
+                        "model_name": "claude-haiku-4-5-20251001",
+                        "litellm_params": {
+                            "model": "hosted_vllm/" + model_name,
+                            "api_base": f"http://{self.backend_llm_server_addresses[0]}/v1/",
+                        },
+                    }
+                ),
+            ]
         )
 
         await self.llm_proxy.restart()
@@ -362,6 +435,7 @@ class AgentModeDaemon:
                 sampling_parameters={
                     "temperature": self.train_information.get("temperature", 0.7 if is_train else 0.0)
                 },
+                model="local",
             )
 
         resources: NamedResources = {"main_llm": llm_resource}

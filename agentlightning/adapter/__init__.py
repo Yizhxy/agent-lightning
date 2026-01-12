@@ -2,7 +2,7 @@
 
 from .base import Adapter, OtelTraceAdapter, TraceAdapter
 from .messages import TraceToMessages
-from .triplet import LlmProxyTraceToTriplet, TracerTraceToTriplet, TraceToTripletBase
+from .triplet import LlmProxyTraceToTriplet, TracerTraceToTriplet, TraceToTripletBase ,LlmProxyTraceToAugmentedTriplet
 
 __all__ = [
     "TraceAdapter",
@@ -12,4 +12,5 @@ __all__ = [
     "TracerTraceToTriplet",
     "LlmProxyTraceToTriplet",
     "TraceToMessages",
+    "LlmProxyTraceToAugmentedTriplet",
 ]

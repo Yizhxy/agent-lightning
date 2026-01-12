@@ -25,6 +25,7 @@ import os
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, Optional
+from agentlightning.llm_proxy import LLMProxy
 
 import pandas as pd
 from sql_agent import LitSQLAgent
@@ -37,18 +38,18 @@ RL_TRAINING_CONFIG: Dict[str, Any] = {
         "use_kl_in_reward": False,
     },
     "data": {
-        "train_files": "data/train_spider.parquet",
-        "val_files": "data/test_dev_500.parquet",
-        "train_batch_size": 32,
-        "max_prompt_length": 4096,
-        "max_response_length": 2048,
+        "train_files": "/scratch/azureml/cr/j/588504a81f5c47d6aa9bde1908aa3256/exe/wd/project/agent-lightning/examples/cc/data_utils/swe_debug_2.parquet",
+        "val_files": "/scratch/azureml/cr/j/588504a81f5c47d6aa9bde1908aa3256/exe/wd/project/agent-lightning/examples/cc/data_utils/swe_debug_2.parquet",
+        "train_batch_size": 2,
+        "max_prompt_length": 258048,
+        "max_response_length": 4096,
         "truncation": "error",
     },
     "actor_rollout_ref": {
         "rollout": {
-            "tensor_model_parallel_size": 1,
-            "n": 4,
-            "log_prob_micro_batch_size_per_gpu": 4,
+            "tensor_model_parallel_size": 8,
+            "n": 2,
+            "log_prob_micro_batch_size_per_gpu": 1,
             "multi_turn": {"format": "hermes"},
             "name": "vllm",
             "gpu_memory_utilization": 0.8,
@@ -60,8 +61,8 @@ RL_TRAINING_CONFIG: Dict[str, Any] = {
             },
         },
         "actor": {
-            "ppo_mini_batch_size": 32,
-            "ppo_micro_batch_size_per_gpu": 4,
+            "ppo_mini_batch_size": 2,
+            "ppo_micro_batch_size_per_gpu": 1,
             "optim": {"lr": 1e-6},
             "use_kl_loss": False,
             "kl_loss_coef": 0.0,
@@ -72,27 +73,30 @@ RL_TRAINING_CONFIG: Dict[str, Any] = {
                 "param_offload": True,
                 "optimizer_offload": True,
             },
+            "ulysses_sequence_parallel_size":8
         },
         "ref": {
-            "log_prob_micro_batch_size_per_gpu": 8,
+            "log_prob_micro_batch_size_per_gpu": 1,
             "fsdp_config": {"param_offload": True},
+            "ulysses_sequence_parallel_size":8
         },
         "model": {
-            "path": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+            "path": "Qwen/Qwen3-4B-Instruct-2507",
             "use_remove_padding": True,
             "enable_gradient_checkpointing": True,
         },
     },
     "trainer": {
-        "n_gpus_per_node": 1,
+        "n_gpus_per_node": 8,
         "val_before_train": True,
         "critic_warmup": 0,
-        "logger": ["console", "wandb"],
+        "logger": ["console"],
         "project_name": "AgentLightning",
         "experiment_name": "spider",
         "nnodes": 1,
         "test_freq": 32,
         "total_epochs": 2,
+        "balance_batch":False
     },
 }
 
@@ -169,7 +173,13 @@ def train(config: Dict[str, Any], active_agent: Optional[str]) -> None:
 
     agent = LitSQLAgent()
     algorithm = agl.VERL(config)
-    trainer = agl.Trainer(n_runners=10, algorithm=algorithm, adapter={"agent_match": active_agent})
+
+    client = agl.LightningStoreClient("http://localhost:4747")
+    # llm_proxy = LLMProxy(
+    #     port=8765, store=client, callbacks=["return_token_ids", "opentelemetry"]
+    # )
+    # llm_proxy.server_launcher._access_host = "localhost"
+    trainer = agl.Trainer(store=client, n_runners=10, algorithm=algorithm, adapter={"agent_match": active_agent})
     print("Adapter agent match acknowledged:", trainer.adapter.agent_match)  # type: ignore
 
     train_data = pd.read_parquet(config["data"]["train_files"]).to_dict(orient="records")  # type: ignore
