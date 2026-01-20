@@ -92,7 +92,7 @@ RL_TRAINING_CONFIG: Dict[str, Any] = {
         "critic_warmup": 0,
         "logger": ["console", "wandb"],
         "project_name": "AgentLightning",
-        "experiment_name": "spider",
+        "experiment_name": "cc_qwen3_4b_instruct",
         "nnodes": 4,
         "test_freq": 32,
         "total_epochs": 2,
