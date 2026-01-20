@@ -38,8 +38,8 @@ RL_TRAINING_CONFIG: Dict[str, Any] = {
         "use_kl_in_reward": False,
     },
     "data": {
-        "train_files": "/scratch/azureml/cr/j/588504a81f5c47d6aa9bde1908aa3256/exe/wd/project/agent-lightning/examples/cc/data_utils/swe_debug_2.parquet",
-        "val_files": "/scratch/azureml/cr/j/588504a81f5c47d6aa9bde1908aa3256/exe/wd/project/agent-lightning/examples/cc/data_utils/swe_debug_2.parquet",
+        "train_files": "/mnt/input/swe_verl/swe_train_2.parquet",
+        "val_files": "/mnt/input/swe_verl/swe_eval_2.parquet",
         "train_batch_size": 2,
         "max_prompt_length": 258048,
         "max_response_length": 4096,
@@ -48,7 +48,7 @@ RL_TRAINING_CONFIG: Dict[str, Any] = {
     "actor_rollout_ref": {
         "rollout": {
             "tensor_model_parallel_size": 8,
-            "n": 2,
+            "n": 8,
             "log_prob_micro_batch_size_per_gpu": 1,
             "multi_turn": {"format": "hermes"},
             "name": "vllm",
@@ -90,10 +90,10 @@ RL_TRAINING_CONFIG: Dict[str, Any] = {
         "n_gpus_per_node": 8,
         "val_before_train": True,
         "critic_warmup": 0,
-        "logger": ["console"],
+        "logger": ["console", "wandb"],
         "project_name": "AgentLightning",
         "experiment_name": "spider",
-        "nnodes": 1,
+        "nnodes": 4,
         "test_freq": 32,
         "total_epochs": 2,
         "balance_batch":False
