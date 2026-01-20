@@ -851,7 +851,7 @@ class AgentModeDaemon:
             batch_size=n_transition,
         )
         # data_proto = DataProto(batch=batch)
-        data_proto = DataProto(batch=batch, padding=True)
+        data_proto = DataProto(batch=batch, auto_padding=True)
 
         data_metrics = {
             "training/reward": np.mean(list(finished_id_to_final_reward.values())),
