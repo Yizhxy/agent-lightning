@@ -61,7 +61,7 @@ RL_TRAINING_CONFIG: Dict[str, Any] = {
             },
         },
         "actor": {
-            "ppo_mini_batch_size": 2,
+            "ppo_mini_batch_size": 4,
             "ppo_micro_batch_size_per_gpu": 1,
             "optim": {"lr": 1e-6},
             "use_kl_loss": False,
